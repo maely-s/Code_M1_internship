@@ -1,0 +1,161 @@
+---
+title: "code données fictives 2"
+output: html_document
+date: "2024-02-20"
+---
+
+##Setup
+
+Charger les packages nécessaires:
+
+```{r packages}
+library(readxl)
+library(survival)
+library(ggplot2)
+```
+
+set working directory et charger les ficher necessaires :
+
+```{r setup}
+setwd("C:/Users/2024mb002/Downloads")
+chemin_fichier <- "C:/Users/2024mb002/Downloads/Dataset_Omoubata_simulated.xlsx"
+data <- read_excel(chemin_fichier, sheet = 1)  
+head(data)
+numeric_data <- data[, sapply(data, is.numeric)]
+```
+
+head permet de voir le debut des données, ensuite on garde que les données numériques
+
+##Analyse survie en fonction du traitement
+
+```{r survie~traitement}
+glm_model <- glm(Survived ~ Treatment,data=numeric_data,family=binomial(link = "logit"))
+library(DHARMa)
+simulationOutput <- simulateResiduals(glm_model)
+plot(simulationOutput)
+```
+
+--\>graph de simulation
+
+plot
+
+```{r}
+plot(glm_model)
+```
+
+équivalent du tests d'homoscedasticité :
+
+```{r homosceda ?}
+testCategorical(simulationOutput,glm_model$model$releve)
+```
+
+Analyse des sorties :
+
+```{r summary glm1}
+summary(glm_model)
+```
+
+```{r sorties glm1 suite}
+confint(glm_model)
+drop1(glm_model,test="Chisq")
+nulglm_model <- glm(Survived~1,data=glm_model$model,family=binomial(link = "logit"))
+mcFaddenR <- (deviance(nulglm_model)-deviance(glm_model))/deviance(nulglm_model)
+glm_model_no <- glm(Survived~Treatment,data=glm_model$model,family=binomial(link = "logit"))
+anova(nulglm_model,glm_model,test="Chisq")
+AIC(nulglm_model)
+AIC(glm_model)
+```
+
+comparaison avec glm nul
+
+```{r sorties glm1 suite}
+anova(glm_model_no,glm_model,test="Chisq")
+```
+
+inutile ?
+
+```{r}
+nulsimulationOutput <- simulateResiduals(nulglm_model)
+plot(nulsimulationOutput)
+```
+
+plot nul pour comparaison
+
+##Graph en barre survie\~traitement
+
+pas sur d'utiliser mais represente bien :
+
+```{r plot en barre}
+ggplot(data, aes(x = Treatment, fill = factor(Survived))) +
+  geom_bar(position = "dodge", width = 0.7, stat = "count") +
+  labs(title = "Survie en fonction du traitement",
+       x = "Traitement",
+       y = "Nombre de tiques")+
+  scale_fill_manual(values = c("0" = "darkred", "1" = "darkolivegreen3"), 
+                    labels = c("Décédé", "Survécu")) +
+  theme_minimal() +
+  scale_x_continuous(trans = "log2", breaks = c(0, 1, 2, 10, 20, 100))
+  
+```
+
+à voir avec cette fonction car utilisiation du log donc enleve la barre pour le traitement 0. Sinon autre option :
+
+```{r plot en barre avec 0}
+ggplot(data, aes(x = Treatment, fill = factor(Survived))) +
+  geom_bar(position = "dodge", width = 0.7, stat = "count") +
+  labs(title = "Survie en fonction du traitement",
+       x = "Traitement",
+       y = "Nombre de patients") +
+  scale_fill_manual(values = c("0" = "darkred", "1" = "darkolivegreen3"), 
+                    labels = c("Décédé", "Survécu")) +
+  theme_minimal()
+
+```
+
+graphique moins lisible mais affiche le traitement 0
+
+##Analyse temps de survie en fonction traitment
+
+```{r tps survie~traitement}
+
+```
+
+##Analyse mue en focntion traitement
+
+```{r mue~traitement}
+glm_model2 <- glm(Moulted ~ Treatment,data=numeric_data,family=binomial(link = "logit"))
+library(DHARMa)
+simulationOutput <- simulateResiduals(glm_model2 ,n=100)
+plot(simulationOutput)
+```
+
+#Analyse des sorties
+
+```{r summary glm mue}
+summary(glm_model2)
+```
+
+```{r autre sortie mue}
+confint(glm_model2)
+drop1(glm_model2,test="Chisq")
+nulglm_model2 <- glm(Moulted~1,data=glm_model2$model,family=binomial(link = "logit"))
+mcFaddenR2 <- (deviance(nulglm_model2)-deviance(glm_model2))/deviance(nulglm_model2)
+glm_model_no2 <- glm(Moulted~Treatment,data=glm_model2$model,family=binomial(link = "logit"))
+anova(nulglm_model2,glm_model2,test="Chisq")
+anova(glm_model_no2,glm_model2,test="Chisq")
+
+```
+
+##Analyse temps de mue en fonction traitement
+
+```{r tps mue~traitement}
+
+```
+
+##Analyse avec les deux espèces séparées :
+
+faire analyse effet fixe avec effet mercure + effet espèce
+
+```{r}
+
+```
