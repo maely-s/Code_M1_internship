@@ -252,7 +252,7 @@ faire analyse effet fixe avec effet mercure + effet espèce
 
 ```
 
-##Analyse effet machine 
+##Analyse effet machine / plaques 
 ```{r}
 
 ```
