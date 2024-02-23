@@ -12,6 +12,7 @@ Charger les packages nécessaires:
 library(readxl)
 library(survival)
 library(ggplot2)
+library(survival)
 ```
 
 set working directory et charger les ficher necessaires :
@@ -37,9 +38,9 @@ plot(simulationOutput)
 
 --\>graph de simulation
 
-plot
+  #plot : 
 
-```{r}
+```{r plot glm}
 plot(glm_model)
 ```
 
@@ -49,13 +50,13 @@ plot(glm_model)
 testCategorical(simulationOutput,glm_model$model$releve)
 ```
 
-Analyse des sorties :
+  #Analyse des sorties :
 
 ```{r summary glm1}
 summary(glm_model)
 ```
 
-```{r sorties glm1 suite}
+```{r sorties glm1}
 confint(glm_model)
 drop1(glm_model,test="Chisq")
 nulglm_model <- glm(Survived~1,data=glm_model$model,family=binomial(link = "logit"))
@@ -74,14 +75,13 @@ anova(glm_model_no,glm_model,test="Chisq")
 
 inutile ?
 
-```{r}
+```{r plot glm nul}
 nulsimulationOutput <- simulateResiduals(nulglm_model)
 plot(nulsimulationOutput)
 ```
+--> plot glm nul pour comparaison
 
-plot nul pour comparaison
-
-##Graph en barre survie\~traitement
+  #Graph en barre survie~traitement
 
 pas sur d'utiliser mais represente bien :
 
@@ -116,11 +116,63 @@ graphique moins lisible mais affiche le traitement 0
 
 ##Analyse temps de survie en fonction traitment
 
+avec glm erreur poisson --> pas l'air de bien marcher 
 ```{r tps survie~traitement}
+glm_modeltps <- glm(Survival_time ~ Treatment,data=numeric_data,family=poisson)
+library(DHARMa)
+simulationOutput <- simulateResiduals(glm_modeltps)
+plot(simulationOutput)
+```
+--\>graph de simulation
 
+  #Analyse des sorties :
+
+```{r summary glm poisson}
+summary(glm_modeltps)
 ```
 
-##Analyse mue en focntion traitement
+```{r sorties glm poisson}
+confint(glm_modeltps)
+drop1(glm_modeltps,test="Chisq")
+nulglm_modeltps <- glm(Survival_time~1,data=glm_modeltps$model,family=poisson)
+mcFaddenR <- (deviance(nulglm_modeltps)-deviance(glm_modeltps))/deviance(nulglm_modeltps)
+glm_model_n1 <- glm(Survival_time~Treatment,data=glm_model$model,family=poisson)
+anova(nulglm_modeltps,glm_modeltps,test="Chisq")
+AIC(nulglm_modeltps)
+AIC(glm_modeltps)
+```
+
+  #comparaison avec glm nul
+
+```{r sorties glm poisson suite}
+anova(glm_model_n1,glm_modeltps,test="Chisq")
+```
+inutile ?
+
+```{r plot }
+nulsimulationtps <- simulateResiduals(nulglm_modeltps)
+plot(nulsimulationtps)
+```
+--> plot glm nul pour comparaison
+
+  #Analyse temps de survie regression de cox 
+  
+```{r regression cox}
+tps_survie <- coxph(Surv(Survival_time, Survived) ~ Treatment, data = numeric_data)
+summary(tps_survie)
+```
+--> pas significatif donc plot comme pour un model nul  
+
+```{ plot tps survie}
+surv_fit <- survfit(tps_survie)
+ggsurvplot(surv_fit, data = numeric_data, risk.table = TRUE, 
+           pval = TRUE, conf.int = TRUE, 
+           palette = c("red", "blue", "green"),
+           xlab = "Temps", ylab = "Probabilité de survie", 
+           main = "Courbes de survie en fonction du traitement")
+```
+  
+##Analyse mue en fonction traitement
 
 ```{r mue~traitement}
 glm_model2 <- glm(Moulted ~ Treatment,data=numeric_data,family=binomial(link = "logit"))
@@ -129,7 +181,7 @@ simulationOutput <- simulateResiduals(glm_model2 ,n=100)
 plot(simulationOutput)
 ```
 
-#Analyse des sorties
+  #Analyse des sorties
 
 ```{r summary glm mue}
 summary(glm_model2)
@@ -146,11 +198,51 @@ anova(glm_model_no2,glm_model2,test="Chisq")
 
 ```
 
+  #Graph en barre mue~traitement
+
+```{r plot en barre}
+ggplot(data, aes(x = Treatment, fill = factor(Moulted))) +
+  geom_bar(position = "dodge", width = 0.7, stat = "count") +
+  labs(title = "Mue en fonction du traitement",
+       x = "Traitement",
+       y = "Nombre de tiques")+
+  scale_fill_manual(values = c("0" = "darkred", "1" = "darkolivegreen3"), 
+                    labels = c("n'a pas mué", "à mué")) +
+  theme_minimal() +
+  scale_x_continuous(trans = "log2", breaks = c(0, 1, 2, 10, 20, 100))
+  
+```
+
 ##Analyse temps de mue en fonction traitement
 
 ```{r tps mue~traitement}
+glm_modeltps2 <- glm(Time_to_moult ~ Treatment,data=numeric_data,family=poisson)
+library(DHARMa)
+simulationtps2 <- simulateResiduals(glm_modeltps2)
+plot(simulationtps2)
+```
+
+  #Analyse des sorties
+
+```{r summary glm mue}
+summary(glm_modeltps2)
+```
+
+```{r autre sortie mue}
+confint(glm_modeltps2)
+drop1(glm_modeltps2,test="Chisq")
+nulglm_modeltps2 <- glm(Time_to_moult~1,data=glm_modeltps2$model,family=poisson)
+mcFaddenR2 <- (deviance(nulglm_modeltps2)-deviance(glm_modeltps2))/deviance(nulglm_modeltps2)
+glm_model_ntps2 <- glm(Time_to_moult~Treatment,data=glm_modeltps2$model,family=poisson)
+anova(nulglm_modeltps2,glm_modeltps2,test="Chisq")
+anova(glm_model_ntps2,glm_modeltps2,test="Chisq")
+```
+
+##Analyse taille de mue en fonction traitement
+```{r}
 
 ```
+
 
 ##Analyse avec les deux espèces séparées :
 
@@ -159,3 +251,9 @@ faire analyse effet fixe avec effet mercure + effet espèce
 ```{r}
 
 ```
+
+##Analyse effet machine 
+```{r}
+
+```
+
