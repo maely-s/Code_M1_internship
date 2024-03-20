@@ -1,0 +1,159 @@
+---
+title: "données_O.moub"
+output: html_document
+date: "2024-03-19"
+---
+
+##Setup
+
+Charger les packages nécessaires:
+
+```{r packages}
+library(readxl)
+library(survival)
+library(ggplot2)
+library(survival)
+library(lme4)
+library(nlme)
+library(dplyr)
+library(survminer)
+library(Matrix)
+library(PMCMRplus)
+library(dunn.test)
+```
+
+set working directory, charger les fichiers necessaires, créer un ficher avec les données numériques uniquement :
+
+```{r setup}
+setwd("C:/Users/2024mb002/Downloads")
+chemin_fichier <- "C:/Users/2024mb002/Downloads/Dataset_Omoubata_simulated.xlsx"
+data <- read_excel(chemin_fichier, sheet = 1)  
+head(data)
+numeric_data <- data[, sapply(data, is.numeric)]
+```
+
+##test de la normalité des echantillons 
+
+  test de Shapiro-Wilk pour chaque variable numérique : 
+  
+```{r Shapiro-Wilk}
+shapiro_results <- apply(numeric_data, 2, shapiro.test)
+shapiro_results
+```
+
+  test non parametrique pour voir signif entre les groupes :
+  
+```{r Kruskal-Wallis}
+kruskal.test(Survived ~ Treatment, data = data)
+kruskal.test(Survival_time ~ Treatment, data = data)
+kruskal.test(Moulted ~ Treatment, data = data)
+kruskal.test(Time_to_moult ~ Treatment, data = data)
+kruskal.test(Bloodmeal_size ~ Treatment, data = data)
+```
+
+  si signif, besoin de determiner quel groupes : test de comparaison multiple de Dunn
+  
+```{r Dunn}
+dunn_test_result <- dunn.test(data$Survived, g = data$Treatment, method = "bonferroni")
+summary(dunn_test_result)
+```
+
+
+les analyses suivantes sont faites en modèles mixte avec l'effet plaque en aléatoire
+
+##Analyse survie en fonction du traitement
+
+```{r survie~traitement}
+model <- glmer(Survived ~ Treatment + (1 | Plaque), 
+               family = binomial,
+               data = data)
+summary(model)
+```
+
+adapter les valeurs suivantes en fonction de la sortie du test d'avant
+
+```{r test overdispersion survie}
+
+deviance_model <- 32.7
+deviance_saturated <- 108
+residual_deviance <- deviance_saturated - deviance_model
+df <- 51
+
+# Test de surdispersion (test de dispersion de Pearson)
+pearson_chi_sq <- residual_deviance / df
+p_value <- pchisq(pearson_chi_sq, df, lower.tail = FALSE)
+
+cat("Test de surdispersion (test de dispersion de Pearson) :\n")
+cat("Statistique de test:", pearson_chi_sq, "\n")
+cat("Nombre de degrés de liberté:", df, "\n")
+cat("P-value:", p_value, "\n")
+
+if (p_value < 0.05) {
+  cat("Il y a une surdispersion significative dans les données.\n")
+} else {
+  cat("Il n'y a pas de surdispersion significative dans les données.\n")
+}
+```
+
+##Analyse temps de survie en fonction traitment
+
+```{r : log temps de survie}
+glmtps <- glm(log(Survival_time)~Treatment, data=numeric_data, family = gaussian(link = "log"))
+summary(glmtps)
+AIC(glmtps)
+simulationOutput <- simulateResiduals(modeltps)
+plot(simulationOutput)
+plot(modeltps)
+```
+
+##Analyse mue en fonction traitement
+
+```{r mue~traitement}
+
+model2 <- glmer(Moulted ~ Treatment + (1 | Plaque), 
+               family = binomial,
+             data = data)
+summary(model2)
+```
+
+```{r test overdispersion mue}
+
+deviance_model <- 74.8
+deviance_saturated <- 108
+residual_deviance <- deviance_saturated - deviance_model
+df <- 51
+pearson_chi_sq <- residual_deviance / df
+p_value <- pchisq(pearson_chi_sq, df, lower.tail = FALSE)
+
+cat("Test de surdispersion (test de dispersion de Pearson) :\n")
+cat("Statistique de test:", pearson_chi_sq, "\n")
+cat("Nombre de degrés de liberté:", df, "\n")
+cat("P-value:", p_value, "\n")
+
+if (p_value < 0.05) {
+  cat("Il y a une surdispersion significative dans les données.\n")
+} else {
+  cat("Il n'y a pas de surdispersion significative dans les données.\n")
+}
+```
+
+##Analyse temps de mue en fonction traitement
+
+```{r tps mue~traitement}
+lm_modeltps2 <- lm(log(Time_to_moult)~Treatment, data=numeric_data)
+summary(lm_modeltps2)
+simulationOutput <- simulateResiduals(lm_modeltps2)
+plot(simulationOutput)
+plot(lm_modeltps2)
+AIC(lm_modeltps2)
+summary(lm_modeltps2)
+```
+
+##Analyse bloodmeal size en fonction traitement
+
+```{r Bloodmeal size}
+modGauss <- lm(Bloodmeal_size~Treatment,data=numeric_data)
+summary(modGauss)
+plot(modGauss)
+```
+
