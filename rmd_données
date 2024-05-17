@@ -26,10 +26,13 @@ set working directory, charger les fichiers necessaires, créer un ficher avec l
 
 ```{r setup}
 setwd("C:/Users/2024mb002/Downloads")
-chemin_fichier <- "C:/Users/2024mb002/Downloads/Dataset_Omoubata_simulated.xlsx"
-data <- read_excel(chemin_fichier, sheet = 1)  
+data <- Daily_tick_monitoring
+colnames(data)[colnames(data) == "Treatment_ul/ml"] <- "Treatment_ul"
 head(data)
 numeric_data <- data[, sapply(data, is.numeric)]
+data$Bloodmeal_size2 <- ifelse(data$Bloodmeal_size < 0, 0, data$Bloodmeal_size)
+numeric_data$Bloodmeal_size2 <- ifelse(numeric_data$Bloodmeal_size < 0, 0, data$Bloodmeal_size)
+numeric_data <- numeric_data[-c(51, 52, 53), ]
 ```
 
 ##test de la normalité des echantillons 
@@ -44,18 +47,29 @@ shapiro_results
   test non parametrique pour voir signif entre les groupes :
   
 ```{r Kruskal-Wallis}
-kruskal.test(Survived ~ Treatment, data = data)
-kruskal.test(Survival_time ~ Treatment, data = data)
-kruskal.test(Moulted ~ Treatment, data = data)
-kruskal.test(Time_to_moult ~ Treatment, data = data)
-kruskal.test(Bloodmeal_size ~ Treatment, data = data)
+kruskal.test(Survived ~ Realised_dose, data = data)
+kruskal.test(Survived ~ Treatment_ul, data = data)
+kruskal.test(Survival_time ~ Realised_dose, data = data)
+kruskal.test(Mue ~ Realised_dose, data = data)
+kruskal.test(Mue ~ Treatment_ul, data = data)
+kruskal.test(Time_to_moult ~ Realised_dose, data = data)
+kruskal.test(Bloodmeal_size2 ~ Realised_dose, data = data)
 ```
 
   si signif, besoin de determiner quel groupes : test de comparaison multiple de Dunn
   
 ```{r Dunn}
-dunn_test_result <- dunn.test(data$Survived, g = data$Treatment, method = "bonferroni")
-summary(dunn_test_result)
+dunn_Survived <- dunn.test(data$Survived, data$Treatment_ul)
+print("Dunn's test results for Survived:")
+print(dunn_Survived)
+
+dunn_survival_time <- dunn.test(data$Survival_time, data$Treatment_ul)
+print("Dunn's test results for Survival_time:")
+print(dunn_survival_time)
+
+dunn_Mue <- dunn.test(data$Mue, data$Treatment_ul)
+print("Dunn's test results for Mue:")
+print(dunn_Mue)
 ```
 
 
@@ -64,10 +78,11 @@ les analyses suivantes sont faites en modèles mixte avec l'effet plaque en alé
 ##Analyse survie en fonction du traitement
 
 ```{r survie~traitement}
-model <- glmer(Survived ~ Treatment + (1 | Plaque), 
+model <- glmer(Survived ~ Realised_dose + (1 | Plaque), 
                family = binomial,
                data = data)
 summary(model)
+plot(model)
 ```
 
 adapter les valeurs suivantes en fonction de la sortie du test d'avant
@@ -95,25 +110,62 @@ if (p_value < 0.05) {
 }
 ```
 
+plot : 
+
+```{r : graph survie en fct traitement}
+ggplot(data, aes(x = Treatment_ul, fill = factor(Survived))) +
+  geom_bar(position = "dodge", width = 10, stat = "count") +
+  labs(title = "Survie en fonction du traitement",
+       x = "Traitement",
+       y = "Nombre de tiques") +
+  scale_fill_manual(values = c("0" = "darkred", "1" = "darkolivegreen3"), 
+                    labels = c("Mort", "Survécu")) +
+  scale_x_continuous(breaks = levels(Daily_tick_monitoring$Treatment_ul)) +
+  geom_text(aes(label = Treatment_ul, y = -0.5), position = position_dodge(width = 0.7)) +
+  theme_minimal()
+```
+
+
 ##Analyse temps de survie en fonction traitment
 
 ```{r : log temps de survie}
-glmtps <- glm(log(Survival_time)~Treatment, data=numeric_data, family = gaussian(link = "log"))
+constante <- 1
+numeric_data$Variable_transfo <- log(numeric_data$Survival_time + constante)
+
+glmtps <- lmer(Variable_transfo~Realised_dose + (1 | Plaque),
+               data=numeric_data)
 summary(glmtps)
 AIC(glmtps)
-simulationOutput <- simulateResiduals(modeltps)
-plot(simulationOutput)
-plot(modeltps)
+plot(glmtps)
+```
+
+
+```{r courble tps survie Kaplan-Meier}
+surv_obj <- Surv(time = data$Survival_time, event = data$Survived)
+
+# Création du modèle de survie Kaplan-Meier
+km_fit <- survfit(surv_obj ~ Treatment_ul, data = data)
+
+# Tracé du graphique de survie
+ggsurvplot(km_fit, 
+           data = data, 
+           pval = FALSE,  
+           conf.int = FALSE, 
+           legend.title = "Traitement",  
+           risk.table = FALSE,  # Afficher le tableau de risque
+           xlab = "Temps",  
+           ylab = "Proportion de survie",  
+           ggtheme = theme_minimal())  
 ```
 
 ##Analyse mue en fonction traitement
 
 ```{r mue~traitement}
-
-model2 <- glmer(Moulted ~ Treatment + (1 | Plaque), 
+model_mue <- glmer(Mue ~ Realised_dose + (1 | Plaque), 
                family = binomial,
              data = data)
-summary(model2)
+summary(model_mue)
+plot(model_mue)
 ```
 
 ```{r test overdispersion mue}
@@ -140,20 +192,53 @@ if (p_value < 0.05) {
 ##Analyse temps de mue en fonction traitement
 
 ```{r tps mue~traitement}
-lm_modeltps2 <- lm(log(Time_to_moult)~Treatment, data=numeric_data)
-summary(lm_modeltps2)
-simulationOutput <- simulateResiduals(lm_modeltps2)
-plot(simulationOutput)
-plot(lm_modeltps2)
-AIC(lm_modeltps2)
-summary(lm_modeltps2)
+model_tps_mue <- glmer(log(Time_to_moult) ~ Realised_dose + (1 | Plaque), 
+               family = gaussian,
+             data = data)
+summary(model_tps_mue)
+plot(model_tps_mue)
+AIC(model_tps_mue)
 ```
+
+```{r}
+ggplot(data, aes(x = Treatment_ul, fill = factor(Mue))) +
+  geom_bar(position = "dodge", width = 10, stat = "count") +
+  labs(title = "Mue en fonction du traitement",
+       x = "Traitement",
+       y = "Nombre de tiques") +
+  scale_fill_manual(values = c("0" = "darkred", "1" = "darkolivegreen3" ), 
+                    labels = c("pas de Mue", "Mue")) +
+   scale_x_continuous(breaks = levels(data$Treatment_ul)) +
+  geom_text(aes(label = Treatment_ul , y = -0.5), position = position_dodge(width = 0)) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(data, aes(x = Realised_dose, y = Mue)) +
+  geom_point(color = "blue") +  # Ajouter les points
+  geom_smooth(method = "lm", se = FALSE, color = "red") +  # Ajouter une ligne de tendance
+  labs(title = "Mue en fonction du traitement", x = "Traitement (ul)", y = "Mue")
+```
+
 
 ##Analyse bloodmeal size en fonction traitement
 
 ```{r Bloodmeal size}
-modGauss <- lm(Bloodmeal_size~Treatment,data=numeric_data)
-summary(modGauss)
-plot(modGauss)
+model4 <- glmer(Bloodmeal_size2 ~ Realised_dose + (1 | Plaque), 
+               family = gaussian,
+             data = data)
+hist(data$Bloodmeal_size2)
+summary(model4)
 ```
+
+```{r}
+attach(data)
+names(data)
+plot(Realised_dose,Survival_time,pch=21,col="blue",bg="red")
+plot(Realised_dose,Mue,pch=21,col="blue",bg="red")
+plot(Realised_dose,Time_to_moult,pch=21,col="blue",bg="red")
+
+
+```
+
 
