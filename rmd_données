@@ -4,7 +4,7 @@ output: html_document
 date: "2024-03-19"
 ---
 
-##Setup
+##        1. Setup
 
 Charger les packages nécessaires:
 
@@ -20,6 +20,8 @@ library(survminer)
 library(Matrix)
 library(PMCMRplus)
 library(dunn.test)
+library(AER)
+library(DHARMa)
 ```
 
 set working directory, charger les fichiers necessaires, créer un ficher avec les données numériques uniquement :
@@ -35,7 +37,7 @@ numeric_data$Bloodmeal_size2 <- ifelse(numeric_data$Bloodmeal_size < 0, 0, data$
 numeric_data <- numeric_data[-c(51, 52, 53), ]
 ```
 
-##test de la normalité des echantillons 
+##            2. Test de la normalité des echantillons 
 
   test de Shapiro-Wilk pour chaque variable numérique : 
   
@@ -44,19 +46,11 @@ shapiro_results <- apply(numeric_data, 2, shapiro.test)
 shapiro_results
 ```
 
-  test non parametrique pour voir signif entre les groupes :
+Plus bas, toutes les données seront testé avec un test de kruska-wallis : un test non parametrique pour voir signif entre les groupes.
   
-```{r Kruskal-Wallis}
-kruskal.test(Survived ~ Realised_dose, data = data)
-kruskal.test(Survived ~ Treatment_ul, data = data)
-kruskal.test(Survival_time ~ Realised_dose, data = data)
-kruskal.test(Mue ~ Realised_dose, data = data)
-kruskal.test(Mue ~ Treatment_ul, data = data)
-kruskal.test(Time_to_moult ~ Realised_dose, data = data)
-kruskal.test(Bloodmeal_size2 ~ Realised_dose, data = data)
-```
+on test la survie (survie et temps de survie), la mue (succès de mue et temps de mue) et la taille du repas sanguin. Chaque donnée sera analysé en fonction du traitement mais aussi en fonction de la dose réel de mercure par rapport au repas sanguin size (= dose réelle)
 
-  si signif, besoin de determiner quel groupes : test de comparaison multiple de Dunn
+  si signif, besoin de determiner quel groupes : test de comparaison multiple de Dunn (voir dans quelles parties le rajouter)
   
 ```{r Dunn}
 dunn_Survived <- dunn.test(data$Survived, data$Treatment_ul)
@@ -72,156 +66,214 @@ print("Dunn's test results for Mue:")
 print(dunn_Mue)
 ```
 
-
 les analyses suivantes sont faites en modèles mixte avec l'effet plaque en aléatoire
 
-##Analyse survie en fonction du traitement
+##        3. Analyse survie 
 
-```{r survie~traitement}
-model <- glmer(Survived ~ Realised_dose + (1 | Plaque), 
-               family = binomial,
-               data = data)
-summary(model)
-plot(model)
+#kruskal 
+  
+```{r Kruskal-Wallis survie}
+kruskal.test(Survived ~ Treatment_ul, data = data)
+kruskal.test(Survived ~ Realised_dose, data = data)
 ```
 
-adapter les valeurs suivantes en fonction de la sortie du test d'avant
+#traitement 
 
-```{r test overdispersion survie}
+```{r survie~traitement}
+survie <- glmer(Survived ~ Treatment_ul + (1 | Plaque), 
+               family = binomial,
+               data = data)
+summary(survie)
+AIC(survie)
+anova(survie)
+```
 
-deviance_model <- 32.7
-deviance_saturated <- 108
-residual_deviance <- deviance_saturated - deviance_model
-df <- 51
+```{r}
+dispersiontest(survie, alternative = "two.sided")
+print(dispersion_testmodelcol2)
+```
 
-# Test de surdispersion (test de dispersion de Pearson)
-pearson_chi_sq <- residual_deviance / df
-p_value <- pchisq(pearson_chi_sq, df, lower.tail = FALSE)
 
-cat("Test de surdispersion (test de dispersion de Pearson) :\n")
-cat("Statistique de test:", pearson_chi_sq, "\n")
-cat("Nombre de degrés de liberté:", df, "\n")
-cat("P-value:", p_value, "\n")
+#dose réelle 
 
-if (p_value < 0.05) {
-  cat("Il y a une surdispersion significative dans les données.\n")
-} else {
-  cat("Il n'y a pas de surdispersion significative dans les données.\n")
-}
+```{r survie~realised_dose}
+survR <- glmer(Survived ~ Realised_dose + (1 | Plaque), 
+               family = binomial,
+               data = data)
+summary(survR)
+AIC(survR)
+anova(survR)
 ```
 
 plot : 
 
+graph fait en discrete (pas continuous), voir si changer ou pas
+geom_text(aes(label = Treatment_ul, y = -0.5), position = position_dodge(width = 0.7))
+
 ```{r : graph survie en fct traitement}
-ggplot(data, aes(x = Treatment_ul, fill = factor(Survived))) +
-  geom_bar(position = "dodge", width = 10, stat = "count") +
-  labs(title = "Survie en fonction du traitement",
-       x = "Traitement",
-       y = "Nombre de tiques") +
+ggplot(data, aes(x = Trt_categ, fill = factor(Survived))) +
+  geom_bar(position = "fill", stat = "count") +
+  labs(title = "Survival depending on the treatment",
+       x = "Treatment",
+       y = "Number of ticks") +
   scale_fill_manual(values = c("0" = "darkred", "1" = "darkolivegreen3"), 
-                    labels = c("Mort", "Survécu")) +
-  scale_x_continuous(breaks = levels(Daily_tick_monitoring$Treatment_ul)) +
-  geom_text(aes(label = Treatment_ul, y = -0.5), position = position_dodge(width = 0.7)) +
+                    labels = c("Died", "Survived")) +
+  scale_x_discrete(breaks = levels(Daily_tick_monitoring$Trt_categ)) +
   theme_minimal()
 ```
 
 
-##Analyse temps de survie en fonction traitment
+##        4. Analyse temps de survie 
+
+#kruskal 
+
+```{r Kruskal-Wallis tps survie}
+kruskal.test(Survival_time ~ Treatment_ul, data = data)
+kruskal.test(Survival_time ~ Realised_dose, data = data)
+```
+
+#traitement 
 
 ```{r : log temps de survie}
 constante <- 1
 numeric_data$Variable_transfo <- log(numeric_data$Survival_time + constante)
 
-glmtps <- lmer(Variable_transfo~Realised_dose + (1 | Plaque),
+glmtps <- lmer(Variable_transfo~Treatment_ul + (1 | Plaque),
                data=numeric_data)
 summary(glmtps)
 AIC(glmtps)
-plot(glmtps)
+anova(glmtps)
+simulateResiduals(glmtps, plot = TRUE)
 ```
 
+#dose réelle
+
+```{r : log temps de survie}
+constante <- 1
+numeric_data$Variable_transfo <- log(numeric_data$Survival_time + constante)
+
+glmtps2 <- lmer(Variable_transfo~Realised_dose + (1 | Plaque),
+               data=numeric_data)
+summary(glmtps2)
+AIC(glmtps2)
+anova(glmtps2)
+simulateResiduals(glmtps2, plot = TRUE)
+```
+
+pour dose réelle changer le type de graphique car trop d'info, faire une courbe ? 
 
 ```{r courble tps survie Kaplan-Meier}
-surv_obj <- Surv(time = data$Survival_time, event = data$Survived)
-
-# Création du modèle de survie Kaplan-Meier
-km_fit <- survfit(surv_obj ~ Treatment_ul, data = data)
+fit <- survfit(Surv(Survival_time, Survived2) ~ Trt_categ, data = Daily_tick_monitoring)
 
 # Tracé du graphique de survie
-ggsurvplot(km_fit, 
-           data = data, 
+ggsurvplot(fit, 
+           data = Daily_tick_monitoring, 
            pval = FALSE,  
            conf.int = FALSE, 
            legend.title = "Traitement",  
            risk.table = FALSE,  # Afficher le tableau de risque
            xlab = "Temps",  
            ylab = "Proportion de survie",  
-           ggtheme = theme_minimal())  
+           ggtheme = theme_minimal()) 
 ```
 
-##Analyse mue en fonction traitement
+##            5. Analyse succès de mue 
+
+#kruskal 
+
+```{r Kruskal-Wallis mue}
+kruskal.test(Mue ~ Treatment_ul, data = data)
+kruskal.test(Mue ~ Realised_dose, data = data)
+```
+
+#traitement 
+
+```{r mue~traitement}
+model_mue <- glmer(Mue ~ Treatment_ul + (1 | Plaque), 
+               family = binomial,
+             data = data)
+summary(model_mue)
+```
+
+
+```{r}
+ggplot(data, aes(x = Treatment_ul, fill = factor(Mue))) +
+  geom_bar(position = "fill", stat = "count") +
+  labs(title = "Mue en fonction du traitement",
+       x = "Treatment",
+       y = "number of ticks") +
+  scale_fill_manual(values = c("0" = "darkred", "1" = "darkolivegreen3" ), 
+                    labels = c("Did not molt", "Molted")) +
+   scale_x_continuous(breaks = levels(data$Treatment_ul)) +
+  theme_minimal() 
+```
+
+#dose réelle
 
 ```{r mue~traitement}
 model_mue <- glmer(Mue ~ Realised_dose + (1 | Plaque), 
                family = binomial,
              data = data)
 summary(model_mue)
-plot(model_mue)
 ```
 
-```{r test overdispersion mue}
 
-deviance_model <- 74.8
-deviance_saturated <- 108
-residual_deviance <- deviance_saturated - deviance_model
-df <- 51
-pearson_chi_sq <- residual_deviance / df
-p_value <- pchisq(pearson_chi_sq, df, lower.tail = FALSE)
+##            6. Analyse temps de mue 
 
-cat("Test de surdispersion (test de dispersion de Pearson) :\n")
-cat("Statistique de test:", pearson_chi_sq, "\n")
-cat("Nombre de degrés de liberté:", df, "\n")
-cat("P-value:", p_value, "\n")
+#kruskal 
 
-if (p_value < 0.05) {
-  cat("Il y a une surdispersion significative dans les données.\n")
-} else {
-  cat("Il n'y a pas de surdispersion significative dans les données.\n")
-}
+```{r Kruskal-Wallis tps mue}
+kruskal.test(Time_to_moult ~ Treatment_ul, data = data)
+kruskal.test(Time_to_moult ~ Realised_dose, data = data)
 ```
 
-##Analyse temps de mue en fonction traitement
+#traitement 
 
+voir pour mettre une famille mais fit pas bien ? enle
 ```{r tps mue~traitement}
-model_tps_mue <- glmer(log(Time_to_moult) ~ Realised_dose + (1 | Plaque), 
-               family = gaussian,
+model_tps_mue <- lmer(log(Time_to_moult) ~ Treatment_ul + (1 | Plaque), 
              data = data)
 summary(model_tps_mue)
-plot(model_tps_mue)
+AIC(model_tps_mue)
+```
+```{r test overdispersion tps mue}
+library(DHARMa)
+simulateResiduals(model_tps_mue, plot = TRUE)
+```
+
+#dose réelle
+
+```{r tps mue~dose réelle}
+model_tps_mue <- lmer(log(Time_to_moult) ~ Realised_dose + (1 | Plaque),
+             data = data)
+summary(model_tps_mue)
 AIC(model_tps_mue)
 ```
 
+
 ```{r}
-ggplot(data, aes(x = Treatment_ul, fill = factor(Mue))) +
-  geom_bar(position = "dodge", width = 10, stat = "count") +
-  labs(title = "Mue en fonction du traitement",
+ggplot(data, aes(x= Treatment_ul, y= Time_to_moult)) +
+  geom_point() +
+  geom_boxplot(alpha=0.5) +
+  labs(title = "Temps de mue en focntion du traitement",
        x = "Traitement",
-       y = "Nombre de tiques") +
-  scale_fill_manual(values = c("0" = "darkred", "1" = "darkolivegreen3" ), 
-                    labels = c("pas de Mue", "Mue")) +
-   scale_x_continuous(breaks = levels(data$Treatment_ul)) +
-  geom_text(aes(label = Treatment_ul , y = -0.5), position = position_dodge(width = 0)) +
-  theme_minimal()
-```
-
-```{r}
-ggplot(data, aes(x = Realised_dose, y = Mue)) +
-  geom_point(color = "blue") +  # Ajouter les points
-  geom_smooth(method = "lm", se = FALSE, color = "red") +  # Ajouter une ligne de tendance
-  labs(title = "Mue en fonction du traitement", x = "Traitement (ul)", y = "Mue")
+       y = "Temps de mue")+ 
+  theme(plot.title = element_text(size = 9),
+        legend.position = "none",
+        axis.text.x = element_blank()) +
+  facet_wrap(~Treatment_ul)
 ```
 
 
-##Analyse bloodmeal size en fonction traitement
+##            7. Analyse bloodmeal size en fonction traitement
+
+#kruskal 
+
+```{r Kruskal-Wallis bloodmeal size}
+kruskal.test(Bloodmeal_size ~ Treatment_ul, data = data)
+```
+
+#model 
 
 ```{r Bloodmeal size}
 model4 <- glmer(Bloodmeal_size2 ~ Realised_dose + (1 | Plaque), 
@@ -231,14 +283,62 @@ hist(data$Bloodmeal_size2)
 summary(model4)
 ```
 
-```{r}
-attach(data)
-names(data)
-plot(Realised_dose,Survival_time,pch=21,col="blue",bg="red")
-plot(Realised_dose,Mue,pch=21,col="blue",bg="red")
-plot(Realised_dose,Time_to_moult,pch=21,col="blue",bg="red")
+##        8. Analyse Taille de mue 
 
+impact sur l'augmentation de la taille, faire longueur et largeur séparé ? ou faire "superficie" ?
+changer la famille du model ?
 
+#traitement
+
+```{r ratio longueure trt}
+ratiolong1 <- lmer(Ratio_long ~ Treatment_ul + (1 | Plaque), 
+              data = data)
+summary(ratiolong1)
+anova(ratiolong1)
+AIC(ratiolong1)
+```
+# dose réelle
+
+```{r ratio longueure dose}
+ratiolong2 <- lmer(Ratio_long ~ Realised_dose + (1 | Plaque), 
+             data = data)
+summary(ratiolong2)
+anova(ratiolong2)
+AIC(ratiolong2)
 ```
 
+
+```{r ratio longueure dose}
+ratiolong <- lmer(Ratio_long ~ Treatment_ul + Long_bf_mue + Realised_dose + (1 | Plaque), 
+             data = data)
+summary(ratiolong)
+ratiolongbf <- lmer(Ratio_long ~ Treatment_ul + Long_bf_mue + (1 | Plaque), 
+             data = data)
+summary(ratiolongbf)
+anova(ratiolong)
+anova(ratiolongbf)
+AIC(ratiolong)
+AIC(ratiolongbf)
+```
+
+```{r}
+ggplot(data, aes(x= Treatment_ul, y= Ratio_long)) +
+  geom_point() +
+  geom_boxplot(alpha=0.5) +
+  labs(title = "Taille de mue en fonction du traitement",
+       x = " ",
+       y = "Taille en mm")+ 
+  theme(plot.title = element_text(size = 9),
+        legend.position = "none",
+        axis.text.x = element_blank()) +
+ facet_wrap(~Treatment_ul)
+```
+
+
+tentative de graph ? garder ou pas ? 
+```{r}
+attach(data)
+plot(Realised_dose,Survival_time,pch=21,col="blue",bg="red")
+plot(Realised_dose,Time_to_moult,pch=21,col="blue",bg="red")
+```
 
