@@ -1,6 +1,8 @@
 ---
 title: "données_O.moub"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 date: "2024-03-19"
 ---
 
@@ -30,11 +32,7 @@ set working directory, charger les fichiers necessaires, créer un ficher avec l
 setwd("C:/Users/2024mb002/Downloads")
 data <- Daily_tick_monitoring
 colnames(data)[colnames(data) == "Treatment_ul/ml"] <- "Treatment_ul"
-head(data)
 numeric_data <- data[, sapply(data, is.numeric)]
-data$Bloodmeal_size2 <- ifelse(data$Bloodmeal_size < 0, 0, data$Bloodmeal_size)
-numeric_data$Bloodmeal_size2 <- ifelse(numeric_data$Bloodmeal_size < 0, 0, data$Bloodmeal_size)
-numeric_data <- numeric_data[-c(51, 52, 53), ]
 ```
 
 ##            2. Test de la normalité des echantillons 
@@ -83,16 +81,11 @@ kruskal.test(Survived ~ Realised_dose, data = data)
 survie <- glmer(Survived ~ Treatment_ul + (1 | Plaque), 
                family = binomial,
                data = data)
-summary(survie)
-AIC(survie)
-anova(survie)
+survie_null <- glmer(Survived ~ 1 + (1 | Plaque), 
+               family = binomial,
+               data = data)
+anova(survie, survie_null)
 ```
-
-```{r}
-dispersiontest(survie, alternative = "two.sided")
-print(dispersion_testmodelcol2)
-```
-
 
 #dose réelle 
 
@@ -100,9 +93,13 @@ print(dispersion_testmodelcol2)
 survR <- glmer(Survived ~ Realised_dose + (1 | Plaque), 
                family = binomial,
                data = data)
+survR_null <- glmer(Survived ~ 1 + (1 | Plaque), 
+               family = binomial,
+               data = data)
 summary(survR)
 AIC(survR)
-anova(survR)
+AIC(survR_null)
+anova(survR, survR_null)
 ```
 
 plot : 
@@ -111,17 +108,17 @@ graph fait en discrete (pas continuous), voir si changer ou pas
 geom_text(aes(label = Treatment_ul, y = -0.5), position = position_dodge(width = 0.7))
 
 ```{r : graph survie en fct traitement}
-ggplot(data, aes(x = Trt_categ, fill = factor(Survived))) +
+data$Treatment_ul <- as.factor(data$Treatment_ul)
+ggplot(data, aes(x = Treatment_ul, fill = factor(Survived))) +
   geom_bar(position = "fill", stat = "count") +
   labs(title = "Survival depending on the treatment",
        x = "Treatment",
        y = "Number of ticks") +
   scale_fill_manual(values = c("0" = "darkred", "1" = "darkolivegreen3"), 
                     labels = c("Died", "Survived")) +
-  scale_x_discrete(breaks = levels(Daily_tick_monitoring$Trt_categ)) +
   theme_minimal()
 ```
-
+ 
 
 ##        4. Analyse temps de survie 
 
@@ -130,34 +127,31 @@ ggplot(data, aes(x = Trt_categ, fill = factor(Survived))) +
 ```{r Kruskal-Wallis tps survie}
 kruskal.test(Survival_time ~ Treatment_ul, data = data)
 kruskal.test(Survival_time ~ Realised_dose, data = data)
+dunn_tpsS <- dunn.test(data$Survival_time, data$Treatment_ul)
+print("Dunn's test results for survival time:")
+print(dunn_tpsS)
 ```
 
 #traitement 
 
 ```{r : log temps de survie}
-constante <- 1
-numeric_data$Variable_transfo <- log(numeric_data$Survival_time + constante)
-
-glmtps <- lmer(Variable_transfo~Treatment_ul + (1 | Plaque),
-               data=numeric_data)
-summary(glmtps)
-AIC(glmtps)
-anova(glmtps)
-simulateResiduals(glmtps, plot = TRUE)
+survobj <- with(data, Surv(Survival_time,Survived2))
+survtest <- coxph(survobj~Treatment_ul,
+  data=numeric_data)
+survtest
+cox.zph(survtest)
+survdiff(survobj~Treatment_ul, data=numeric_data)
 ```
 
 #dose réelle
 
 ```{r : log temps de survie}
-constante <- 1
-numeric_data$Variable_transfo <- log(numeric_data$Survival_time + constante)
-
-glmtps2 <- lmer(Variable_transfo~Realised_dose + (1 | Plaque),
-               data=numeric_data)
-summary(glmtps2)
-AIC(glmtps2)
-anova(glmtps2)
-simulateResiduals(glmtps2, plot = TRUE)
+survobj <- with(data, Surv(Survival_time,Survived2))
+survtest <- coxph(survobj~ealized,
+  data=numeric_data)
+survtest
+cox.zph(survtest)
+survdiff(survobj~Treatment_ul, data=numeric_data)
 ```
 
 pour dose réelle changer le type de graphique car trop d'info, faire une courbe ? 
@@ -170,10 +164,10 @@ ggsurvplot(fit,
            data = Daily_tick_monitoring, 
            pval = FALSE,  
            conf.int = FALSE, 
-           legend.title = "Traitement",  
+           legend.title = "Treatment",  
            risk.table = FALSE,  # Afficher le tableau de risque
-           xlab = "Temps",  
-           ylab = "Proportion de survie",  
+           xlab = "Time",  
+           ylab = "Survival proportion",  
            ggtheme = theme_minimal()) 
 ```
 
@@ -191,30 +185,36 @@ kruskal.test(Mue ~ Realised_dose, data = data)
 ```{r mue~traitement}
 model_mue <- glmer(Mue ~ Treatment_ul + (1 | Plaque), 
                family = binomial,
-             data = data)
-summary(model_mue)
+               data = data)
+model_mue_null <- glmer(Mue ~ 1 + (1 | Plaque), 
+               family = binomial,
+               data = data)
+anova(model_mue, model_mue_null)
 ```
-
+plaque NA ? ca veut dire quoi ? 
 
 ```{r}
+data$Treatment_ul <- as.factor(data$Treatment_ul)
 ggplot(data, aes(x = Treatment_ul, fill = factor(Mue))) +
   geom_bar(position = "fill", stat = "count") +
-  labs(title = "Mue en fonction du traitement",
+  labs(title = "Molting sucess depending on the treatment",
        x = "Treatment",
        y = "number of ticks") +
   scale_fill_manual(values = c("0" = "darkred", "1" = "darkolivegreen3" ), 
                     labels = c("Did not molt", "Molted")) +
-   scale_x_continuous(breaks = levels(data$Treatment_ul)) +
   theme_minimal() 
 ```
 
 #dose réelle
 
-```{r mue~traitement}
-model_mue <- glmer(Mue ~ Realised_dose + (1 | Plaque), 
+```{r mue~dose réelle}
+model_mue2 <- glmer(Mue ~ Realised_dose + (1 | Plaque), 
                family = binomial,
              data = data)
-summary(model_mue)
+model_mue2_null <- glmer(Mue ~ 1 + (1 | Plaque), 
+               family = binomial,
+             data = data)
+anova(model_mue2, model_mue2_null)
 ```
 
 
@@ -233,9 +233,12 @@ voir pour mettre une famille mais fit pas bien ? enle
 ```{r tps mue~traitement}
 model_tps_mue <- lmer(log(Time_to_moult) ~ Treatment_ul + (1 | Plaque), 
              data = data)
-summary(model_tps_mue)
-AIC(model_tps_mue)
+model_tps_mue_null <- lmer(log(Time_to_moult) ~ 1 + (1 | Plaque), 
+             data = data)
+anova(model_tps_mue, model_tps_mue_null)
 ```
+lmer car familly gaussian 
+
 ```{r test overdispersion tps mue}
 library(DHARMa)
 simulateResiduals(model_tps_mue, plot = TRUE)
@@ -246,22 +249,22 @@ simulateResiduals(model_tps_mue, plot = TRUE)
 ```{r tps mue~dose réelle}
 model_tps_mue <- lmer(log(Time_to_moult) ~ Realised_dose + (1 | Plaque),
              data = data)
-summary(model_tps_mue)
-AIC(model_tps_mue)
+model_tps_mue_dr <- lmer(log(Time_to_moult) ~ 1 + (1 | Plaque),
+             data = data)
+anova(model_tps_mue, model_tps_mue_dr)
 ```
-
+utilization de lmer car family = gaussian, repetitif avec glmer 
 
 ```{r}
-ggplot(data, aes(x= Treatment_ul, y= Time_to_moult)) +
+ggplot(data, aes(x= Treatment_ul, y= Time_to_moult, fill=Treatment_ul)) +
   geom_point() +
   geom_boxplot(alpha=0.5) +
-  labs(title = "Temps de mue en focntion du traitement",
-       x = "Traitement",
-       y = "Temps de mue")+ 
+  labs(title = "Molting time depending on the treatment",
+       x = "Treatment",
+       y = "Time to molt")+ 
   theme(plot.title = element_text(size = 9),
         legend.position = "none",
-        axis.text.x = element_blank()) +
-  facet_wrap(~Treatment_ul)
+        axis.text.x = element_blank())
 ```
 
 
@@ -277,42 +280,59 @@ kruskal.test(Bloodmeal_size ~ Treatment_ul, data = data)
 
 ```{r Bloodmeal size}
 model4 <- glmer(Bloodmeal_size2 ~ Realised_dose + (1 | Plaque), 
-               family = gaussian,
-             data = data)
-hist(data$Bloodmeal_size2)
+             data = data, family = gaussian)
 summary(model4)
-```
+AIC(model4)
+hist(data$Bloodmeal_size2)
+simulateResiduals(model4)
 
-##        8. Analyse Taille de mue 
+```
+ 
+
+##        8. Analyse Longueure de mue 
 
 impact sur l'augmentation de la taille, faire longueur et largeur séparé ? ou faire "superficie" ?
 changer la famille du model ?
 
+```{r kruskal wallis taille mue}
+kruskal.test(Ratio_long ~ Treatment_ul, data = data)
+kruskal.test(Ratio_long ~ Realised_dose, data = data)
+```
+```{r dunn taille mue}
+dunn_Mue <- dunn.test(data$Ratio_long, data$Treatment_ul)
+print("Dunn's test results for molt size:")
+print(dunn_Survived)
+```
+
+
 #traitement
 
 ```{r ratio longueure trt}
-ratiolong1 <- lmer(Ratio_long ~ Treatment_ul + (1 | Plaque), 
-              data = data)
+ratiolong1 <- glmer(Ratio_long ~ Treatment_ul + (1 | Plaque), 
+              data = data, family = gaussian)
 summary(ratiolong1)
 anova(ratiolong1)
 AIC(ratiolong1)
+hist(data$Ratio_long)
 ```
+quelle famille choisir ? 
+
 # dose réelle
 
 ```{r ratio longueure dose}
-ratiolong2 <- lmer(Ratio_long ~ Realised_dose + (1 | Plaque), 
+ratiolong2 <- glmer(Ratio_long ~ Realised_dose + (1 | Plaque), 
              data = data)
 summary(ratiolong2)
 anova(ratiolong2)
 AIC(ratiolong2)
 ```
-
+AIC plus petit pour GLMM (de 1), choisir ce model ? mais pas de famille choisi
 
 ```{r ratio longueure dose}
-ratiolong <- lmer(Ratio_long ~ Treatment_ul + Long_bf_mue + Realised_dose + (1 | Plaque), 
+ratiolong <- glmer(Ratio_long ~ Treatment_ul + Long_bf_mue + (1 | Plaque), 
              data = data)
 summary(ratiolong)
-ratiolongbf <- lmer(Ratio_long ~ Treatment_ul + Long_bf_mue + (1 | Plaque), 
+ratiolongbf <- glm(Ratio_long ~ Treatment_ul + (1 | Plaque), 
              data = data)
 summary(ratiolongbf)
 anova(ratiolong)
@@ -334,6 +354,35 @@ ggplot(data, aes(x= Treatment_ul, y= Ratio_long)) +
  facet_wrap(~Treatment_ul)
 ```
 
+##        9. Analyse largeur de mue 
+
+
+```{r kruskal wallis larg mue}
+kruskal.test(Ratio_larg ~ Treatment_ul, data = data)
+kruskal.test(Ratio_larg ~ Realised_dose, data = data)
+```
+
+# traitement 
+
+```{r glm larg mue T}
+glmlarg <- glmer(Ratio_larg ~ Treatment_ul + (1 | Plaque), 
+             data = data, family = gamma)
+summary(glmlarg)
+AIC(glmlarg)
+hist(Ratio_larg)
+```
+
+# dose réelle 
+
+```{r glm larg mue dr}
+glmlarg2 <- glmer(Ratio_larg ~ Realised_dose + (1 | Plaque), 
+             data = data)
+summary(glmlarg2)
+AIC(glmlarg2)
+```
+
+
+## autre 
 
 tentative de graph ? garder ou pas ? 
 ```{r}
