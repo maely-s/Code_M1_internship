@@ -29,6 +29,8 @@ library(DHARMa)
 library(pwr)
 library(magrittr)
 library(stringr)
+library(FSA)
+library(rcompanion)
 ```
 
 set working directory, charger les fichiers necessaires : utiliser le fichier "General recap O.moub". Création d'un ficher avec les données numériques uniquement :
@@ -38,6 +40,8 @@ setwd("C:/Users/2024mb002/Downloads")
 data <- Daily_tick_monitoring
 colnames(data)[colnames(data) == "Treatment_ul/ml"] <- "Treatment_ul"
 numeric_data <- data[, sapply(data, is.numeric)]
+data$Trt_categ <- as.factor(data$Trt_categ)
+str(data)
 ```
 
 Ajout d'une colone avec des catégories pour les doses réelles. La derniere catégorie va jusqu'a 0.11 car la dose max est 0.10087 et je voulais l'inclure. 
@@ -78,6 +82,7 @@ les analyses suivantes sont faites en modèles mixte avec l'effet plaque en alé
   
 ```{r Kruskal-Wallis survie}
 kruskal.test(Survived ~ Treatment_ul, data = data)
+kruskal.test(Survived ~ Trt_categ, data = data)
 kruskal.test(Survived ~ Realised_dose, data = data)
 kruskal.test(Survived ~ Realised_dose_class, data = data)
 ```
@@ -88,6 +93,14 @@ kruskal.test(Survived ~ Realised_dose_class, data = data)
 dunn_Survived <- dunn.test(data$Survived, data$Treatment_ul)
 print("Dunn's test results for Survived:")
 print(dunn_Survived)
+
+dunn_Survived_categ <- dunn.test(data$Survived, data$Trt_categ)
+print(dunn_Survived_categ)
+
+PT <- dunnTest(Survived ~ Treatment_ul, data=data, method="bh") 
+PT2 <- PT$res
+b <- cldList(comparison=PT2$Comparison, p.value=PT2$P.adj, threshold = 0.05)
+b
 ```
 
 ```{r survie~traitement}
@@ -97,11 +110,23 @@ survie <- glmer(Survived ~ Treatment_ul + (1 | Plaque),
 survie_null <- glmer(Survived ~ 1 + (1 | Plaque), 
                family = binomial,
                data = data)
+print(survie)
 anova(survie, survie_null)
+
+
+survie <- glmer(Survived ~ Trt_categ + (1 | Plaque), 
+               family = binomial,
+               data = data)
+survie_null <- glmer(Survived ~ 1 + (1 | Plaque), 
+               family = binomial,
+               data = data)
+print(survie)
+anova(survie, survie_null)
+simulateResiduals(survie, plot = TRUE)
+
 ```
 ```{r : graph survie en fct traitement}
-data$Treatment_ul <- as.factor(data$Treatment_ul)
-ggplot(data, aes(x = Treatment_ul, fill = factor(Survived))) +
+ggplot(data, aes(x = Trt_categ, fill = factor(Survived))) +
   geom_bar(position = "fill", stat = "count") +
   labs(x = "Treatment",
        y = "Number of ticks") +
@@ -126,6 +151,8 @@ survR_null <- glmer(Survived ~ 1 + (1 | Plaque),
                family = binomial,
                data = data)
 anova(survR, survR_null)
+simulateResiduals(survR, plot = TRUE)
+
 ```
 
 ```{r : graph survie en fct dose réelle}
@@ -145,6 +172,7 @@ ggplot(data, aes(x = Realised_dose_class, fill = factor(Survived))) +
 
 ```{r Kruskal-Wallis tps survie}
 kruskal.test(Survival_time ~ Treatment_ul, data = data)
+kruskal.test(Survival_time ~ Trt_categ, data = data)
 kruskal.test(Survival_time ~ Realised_dose, data = data)
 kruskal.test(Survival_time ~ Realised_dose_class, data = data)
 ```
@@ -166,17 +194,24 @@ survtest <- coxph(survobj~Treatment_ul,
 survtest
 cox.zph(survtest)
 survdiff(survobj~Treatment_ul, data=numeric_data)
+
+survtest <- coxph(survobj~Trt_categ,
+  data=numeric_data)
+survtest
+cox.zph(survtest)
+survdiff(survobj~Trt_categ, data=numeric_data)
+
 ```
 
 #dose réelle
 
 ```{r : log temps de survie}
 survobj2 <- with(data, Surv(Survival_time,Survived2))
-survtest2 <- coxph(survobj~Realised_dose,
+survtest2 <- coxph(survobj~Realised_dose_class,
   data=data)
 survtest2
 cox.zph(survtest)
-survdiff(survobj2~Realised_dose, data=numeric_data)
+survdiff(survobj2~Realised_dose_class, data=numeric_data)
 ```
 
 pour dose réelle changer le type de graphique car trop d'info, faire une courbe ? 
@@ -227,8 +262,7 @@ anova(model_mue, model_mue_null)
 plaque NA ? ca veut dire quoi ? 
 
 ```{r plot molting sucess depending on the treatment}
-data$Treatment_ul <- as.factor(data$Treatment_ul)
-ggplot(data, aes(x = Treatment_ul, fill = factor(Mue))) +
+ggplot(data, aes(x = Trt_categ, fill = factor(Mue))) +
   geom_bar(position = "fill", stat = "count") +
   labs(x = "Treatment",
        y = "number of ticks") +
@@ -280,41 +314,42 @@ kruskal.test(Time_to_moult ~ Realised_dose_class, data = data)
 voir pour mettre une famille mais fit pas bien ? enle
 ```{r tps mue~traitement}
 model_tps_mue <- glmer(log(Time_to_moult) ~ Treatment_ul + (1 | Plaque), 
-             data = data)
+             data = data, family = gaussian(link = "log"))
 model_tps_mue_null <- glmer(log(Time_to_moult) ~ 1 + (1 | Plaque), 
-             data = data)
+             data = data, family = gaussian(link = "log"))
 anova(model_tps_mue, model_tps_mue_null)
 hist(data$Time_to_moult)
-```
-lmer car familly gaussian 
-rajouter logit link ? 
 
-```{r test overdispersion tps mue}
-library(DHARMa)
+model_tps_mue2 <- glmer(log(Time_to_moult) ~ Trt_categ + (1 | Plaque), 
+             data = data, family = gaussian(link = "log"))
+model_tps_mue_null2 <- glmer(log(Time_to_moult) ~ 1 + (1 | Plaque), 
+             data = data, family = gaussian(link = "log"))
+anova(model_tps_mue, model_tps_mue_null)
+hist(data$Time_to_moult)
 simulateResiduals(model_tps_mue, plot = TRUE)
+simulateResiduals(model_tps_mue2, plot = TRUE)
 ```
-
 #dose réelle
 
 ```{r tps mue~dose réelle}
-model_tps_mue <- glmer(log(Time_to_moult) ~ Realised_dose + (1 | Plaque),
-             data = data)
-model_tps_mue_dr <- glmer(log(Time_to_moult) ~ 1 + (1 | Plaque),
-             data = data)
-anova(model_tps_mue, model_tps_mue_dr)
+model_tps_mue_DR <- glmer(log(Time_to_moult) ~ Realised_dose + (1 | Plaque),
+             data = data, family = gaussian)
+model_tps_mue_DR_null <- glmer(log(Time_to_moult) ~ 1 + (1 | Plaque),
+             data = data, family = gaussian)
+anova(model_tps_mue_DR, model_tps_mue_DR_null)
+simulateResiduals(model_tps_mue_DR, plot = TRUE)
 ```
 utilization de lmer car family = gaussian, repetitif avec glmer 
 
 ```{r ggplot trt time molt}
-ggplot(data, aes(x= Treatment_ul, y= Time_to_moult, fill=Treatment_ul)) +
+ggplot(data, aes(x= Realised_dose, y= Time_to_moult, color=Trt_categ)) +
   geom_point() +
-  geom_boxplot(alpha=0.5) +
   labs(x = "Treatment",
        y = "Time to molt")+ 
   theme(plot.title = element_text(size = 9),
         legend.position = "none",
-        axis.text.x = element_text(angle = 45, hjust = 1)) +
-  scale_x_discrete(labels = function(x) str_wrap(x, width = 10)) 
+        axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  xlim(0, 0.025)
 ```
 
 
@@ -334,15 +369,32 @@ model4 <- glmer(Bloodmeal_size2 ~ Realised_dose + (1 | Plaque),
 model4null <- glmer(Bloodmeal_size2 ~ 1 + (1 | Plaque), 
              data = data, family = gaussian)
 anova(model4, model4null)
+AIC(model4)
+AIC(model4null)
 hist(data$Bloodmeal_size2)
 simulateResiduals(model4)
+
+model4 <- glmer(Bloodmeal_size2 ~ Trt_categ + (1 | Plaque), 
+             data = data, family = gaussian)
+model4null <- glmer(Bloodmeal_size2 ~ 1 + (1 | Plaque), 
+             data = data, family = gaussian)
+anova(model4, model4null)
+
+model4 <- glmer(Bloodmeal_size2 ~ Treatment_ul + (1 | Plaque), 
+             data = data, family = gaussian)
+model4null <- glmer(Bloodmeal_size2 ~ 1 + (1 | Plaque), 
+             data = data, family = gaussian)
+anova(model4, model4null)
+
 ```
  
 
 ##        8. Analyse Longueure de mue 
 
-impact sur l'augmentation de la taille, faire longueur et largeur séparé ? ou faire "superficie" ?
+##                A. Taille relative 
+
 changer la famille du model ?
+utilisation de la colone "ratio" mais = taille relative (longueur après mue sur longueur avant mue)
 
 ```{r kruskal wallis taille mue}
 kruskal.test(Ratio_long ~ Treatment_ul, data = data)
@@ -360,20 +412,50 @@ print(dunn_Survived)
 ```{r ratio longueure trt}
 ratiolong1 <- glmer(Ratio_long ~ Treatment_ul + (1 | Plaque), 
               data = data, family = gaussian)
+summary(ratiolong1)
 ratiolongnull <- glmer(Ratio_long ~ 1 + (1 | Plaque), 
               data = data, family = gaussian)
 anova(ratiolong1, ratiolongnull)
 hist(data$Ratio_long)
+
+ratiolong2 <- glmer(Ratio_long ~ Trt_categ + (1 | Plaque), 
+              data = data, family = gaussian)
+ratiolongnull2 <- glmer(Ratio_long ~ 1 + (1 | Plaque), 
+              data = data, family = gaussian)
+anova(ratiolong1, ratiolongnull)
+hist(data$Ratio_long)
+
+AIC(ratiolong1)
+AIC(ratiolongnull)
+
+tab_model(ratiolong1, ratiolongnull, string.est="IRR", show.aicc=TRUE, digits=2, show.ci=FALSE, show.intercept=FALSE)
+
+simulateResiduals(ratiolong1, plot = TRUE)
+simulateResiduals(ratiolong2, plot = TRUE)
 ```
+
+```{r ggplot ratio_long}
+ggplot(data, aes(x= Trt_categ, y= Ratio_long, fill=Trt_categ)) +
+  geom_point() +
+  geom_boxplot() + 
+  labs(x = "Treatment",
+       y = "Molt size")+ 
+  theme(plot.title = element_text(size = 9),
+        legend.position = "none",
+         axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
 
 # dose réelle
 
 ```{r ratio longueure dose}
-ratiolong2 <- glmer(Ratio_long ~ Realised_dose + (1 | Plaque), 
+ratiolong3 <- glmer(Ratio_long ~ Realised_dose + (1 | Plaque), 
              data = data, family = gaussian)
-ratiolongnull <- glmer(Ratio_long ~ 1 + (1 | Plaque), 
+ratiolongnull3 <- glmer(Ratio_long ~ 1 + (1 | Plaque), 
               data = data, family = gaussian)
 anova(ratiolong2, ratiolongnull)
+simulateResiduals(ratiolong3, plot = TRUE)
 ```
 
 ```{r ratio longueure dose}
@@ -387,7 +469,18 @@ anova(ratiolong, ratiolongbf)
 axis.text.x = element_blank())
 
 ```{r ggplot ratio_long}
-ggplot(data, aes(x= Treatment_ul, y= Ratio_long, fill=Treatment_ul)) +
+ggplot(data, aes(x= Realised_dose, y= Ratio_long2, fill=Treatment_ul)) +
+  geom_point() +
+  labs(x = "Treatment",
+       y = "Molt size")+ 
+  theme(plot.title = element_text(size = 9),
+        legend.position = "none",
+         axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  xlim(0, 0.025)
+```
+
+```{r}
+ggplot(data, aes(x= Trt_categ, y= Ratio_long, fill=Treatment_ul)) +
   geom_point() +
   geom_boxplot(alpha=0.5) +
   labs(x = "Treatment",
@@ -398,7 +491,85 @@ ggplot(data, aes(x= Treatment_ul, y= Ratio_long, fill=Treatment_ul)) +
   scale_x_discrete(labels = function(x) str_wrap(x, width = 10)) 
 ```
 
-## autre 
+
+##            B. Formule ratio 
+
+analyse du "ratio" avec (longueur apres-longueur avant)/Longueur avant --> donne une augmentation de la taille % 
+
+```{r kruskal wallis taille mue}
+kruskal.test(Ratio_long2 ~ Treatment_ul, data = data)
+kruskal.test(Ratio_long2 ~ Realised_dose, data = data)
+```
+
+```{r dunn taille mue}
+dunn_Mue <- dunn.test(data$Ratio_long2, data$Treatment_ul)
+print("Dunn's test results for molt size:")
+print(dunn_Survived)
+```
+
+```{r ratio longueure trt}
+ratiolong2 <- glmer(Ratio_long2 ~ Treatment_ul + (1 | Plaque), 
+              data = data, family = gaussian)
+summary(ratiolong2)
+ratiolongnull2 <- glmer(Ratio_long2 ~ 1 + (1 | Plaque), 
+              data = data, family = gaussian)
+anova(ratiolong2, ratiolongnull2)
+hist(data$Ratio_long2)
+
+ratiolong2 <- glmer(Ratio_long2 ~ Trt_categ + (1 | Plaque), 
+              data = data, family = gaussian)
+summary(ratiolong2)
+ratiolongnull2 <- glmer(Ratio_long2 ~ 1 + (1 | Plaque), 
+              data = data, family = gaussian)
+anova(ratiolong2, ratiolongnull2)
+hist(data$Ratio_long2)
+```
+
+```{r ggplot ratio_long}
+ggplot(data, aes(x= Trt_categ, y= Ratio_long2, fill=Treatment_ul)) +
+  geom_point() +
+  geom_boxplot(alpha=0.5) +
+  labs(x = "Treatment",
+       y = "Molt size")+ 
+  theme(plot.title = element_text(size = 9),
+        legend.position = "none",
+         axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 10)) 
+```
+
+##    9. Autre 
+
+```{r dose réelle en fonction du traitement}
+ggplot(data, aes(x= Trt_categ, y= Realised_dose, fill=Trt_categ)) +
+  geom_point() +
+  geom_boxplot(alpha=0.5) +
+  labs(x = "Treatment",
+       y = "Realized dose")+ 
+  theme(plot.title = element_text(size = 9),
+        legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 10)) 
+```
+
+```{r, message=FALSE, warning=FALSE}
+data_O <- data[-which(data$Realised_dose=="0"),]
+
+shapiro.test(data_O$Realised_dose)
+hist(data_O$Realised_dose)
+
+realised_dose_max <- glmer(Realised_dose ~ Treatment_ul + (1 | Plaque), 
+              data = data_O, family = Gamma(link = "logit"))
+realised_dose_min <- glmer(Realised_dose ~ 1 + (1 | Plaque), 
+              data = data_O, family = Gamma(link = "logit"))
+anova(realised_dose_max, realised_dose_min)
+AIC(realised_dose_max)
+AIC(realised_dose_min)
+
+simulateResiduals(realised_dose_max, plot = TRUE)
+
+tab_model(realised_dose_max, realised_dose_min, string.est="IRR", show.aicc=TRUE, digits=2, show.ci=FALSE, show.intercept=FALSE)
+```
+
 
 tentative de graph ? garder ou pas ? 
 ```{r}
