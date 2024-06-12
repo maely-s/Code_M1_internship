@@ -44,8 +44,6 @@ data$Trt_categ <- as.factor(data$Trt_categ)
 str(data)
 ```
 
-Ajout d'une colone avec des catégories pour les doses réelles. La derniere catégorie va jusqu'a 0.11 car la dose max est 0.10087 et je voulais l'inclure.
-
 
 ## 2. Normality tests 
 
@@ -90,15 +88,16 @@ survie_null <- glmer(Survived ~ 1 + (1 | Plaque),
                data = data)
 print(survie)
 anova(survie, survie_null)
+
 AIC(survie)
 AIC(survie_null)
 
+#dispersion test
 simulateResiduals(survie, plot = TRUE)
-
 ```
 
 ```{r : Plot survival ~ treatement}
-s <- ggplot(data, aes(x = Trt_categ, fill = factor(Survived))) +
+ggplot(data, aes(x = Trt_categ, fill = factor(Survived))) +
   geom_bar(position = "fill", stat = "count") +
   labs(fill = "Survival",
        x = "MeHg treatment dose (ul/ml)",
@@ -118,7 +117,6 @@ s <- ggplot(data, aes(x = Trt_categ, fill = factor(Survived))) +
         legend.key = element_rect(fill = 'white'),
         axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
         axis.text.y = element_text(color = "gray25", size = 10))
-s
 ```
 
 #Realized dose
@@ -131,8 +129,11 @@ survR_null <- glmer(Survived ~ 1 + (1 | Plaque),
                family = binomial,
                data = data)
 anova(survR, survR_null)
+
 AIC(survR)
 AIC(survR_null)
+
+#dispersion test
 simulateResiduals(survR, plot = TRUE)
 ```
 
@@ -179,7 +180,6 @@ cox.zph(survtest)
 survdiff(survobj2~Realised_dose, data=numeric_data)
 ```
 
-pour dose réelle changer le type de graphique car trop d'info, faire une courbe ?
 
 ```{r Kaplan-Meier survival graph}
 fit <- survfit(Surv(Survival_time, Survived2) ~ Trt_categ, data = data)
@@ -234,6 +234,7 @@ model_mue_null <- glmer(Mue ~ 1 + (1 | Plaque),
                family = binomial,
                data = data)
 anova(model_mue, model_mue_null)
+
 AIC(model_mue)
 AIC(model_mue_null)
 ```
@@ -245,7 +246,7 @@ ggplot(data, aes(x = Trt_categ, fill = factor(Mue))) +
        x = "MeHg treatment dose (ul/ml)",
        y = "Proportion of ticks") +
   scale_fill_manual(values = c("0" = "#d0d3a2", "1" = "#798234"), 
-                    labels = c("Molted", "Did not molt")) +
+                    labels = c("did not molt", "Molted")) +
   scale_x_discrete(labels = c("0", "0.76", "3.8", "7.6", "38")) + 
   theme(panel.grid.minor = element_blank(),
         panel.background = element_blank(),
@@ -282,12 +283,10 @@ anova(model_mue2, model_mue2_null)
 
 AIC(model_mue2)
 AIC(model_mue2_null)
-
-simulateResiduals(model_mue2, plot = TRUE)
 ```
 
 
-## 6.  Molting ime Analysis 
+## 6.  Molting time Analysis 
 
 #kruskal
 
@@ -309,6 +308,7 @@ anova(model_tps_mue, model_tps_mue_null)
 
 hist(data$Time_to_moult)
 
+#dispersion test
 simulateResiduals(model_tps_mue, plot = TRUE)
 ```
 
@@ -322,6 +322,7 @@ model_tps_mue_DR_null <- glmer(log(Time_to_moult) ~ 1 + (1 | Plaque),
 
 anova(model_tps_mue_DR, model_tps_mue_DR_null)
 
+#dispersion test
 simulateResiduals(model_tps_mue_DR, plot = TRUE)
 ```
 
@@ -371,11 +372,11 @@ model4null <- glmer(Bloodmeal_size2 ~ 1 + (1 | Plaque),
 anova(model4, model4null)
 
 AIC(model4)
-
 AIC(model4null)
 
 hist(data$Bloodmeal_size2)
 
+#dispersion test
 simulateResiduals(model4)
 ```
 
@@ -410,8 +411,10 @@ AIC(ratiolongnull)
 
 tab_model(ratiolong1, ratiolongnull, string.est="IRR", show.aicc=TRUE, digits=2, show.ci=FALSE, show.intercept=FALSE)
 
+#dispersion test
 simulateResiduals(ratiolong1, plot = TRUE)
 ```
+
 
 ```{r ggplot relative size}
 ggplot(data, aes(x = Trt_categ, y = Ratio_long, fill = Trt_categ)) +
@@ -436,6 +439,28 @@ ggplot(data, aes(x = Trt_categ, y = Ratio_long, fill = Trt_categ)) +
         axis.text.y = element_text(color = "gray25", size = 10))
 ```
 
+due to the previous results and graph, we will test below the relative size with the plaque as a dependent variable 
+
+```{r relative size with the plaque }
+ratiolong1 <- glm(Ratio_long ~ Plaque, 
+              data = data, family = gaussian)
+
+ratiolongnull <- glm(Ratio_long ~ 1, 
+              data = data, family = gaussian)
+
+anova(ratiolong1, ratiolongnull)
+
+AIC(ratiolong1)
+AIC(ratiolongnull)
+
+tab_model(ratiolong1, ratiolongnull, string.est="IRR", show.aicc=TRUE, digits=2, show.ci=FALSE, show.intercept=FALSE)
+
+#dispersion test
+simulateResiduals(ratiolong1, plot = TRUE)
+
+kruskal.test(Ratio_long ~ Plaque, data = data)
+```
+
 # Realized dose
 
 ```{r Relative size ~ realized dose}
@@ -447,6 +472,7 @@ ratiolongnull3 <- glmer(Ratio_long ~ 1 + (1 | Plaque),
 
 anova(ratiolong2, ratiolongnull)
 
+#dispersion test
 simulateResiduals(ratiolong3, plot = TRUE)
 ```
 
@@ -463,9 +489,11 @@ realised_dose_max <- glmer(Realised_dose ~ Treatment_ul + (1 | Plaque),
 realised_dose_min <- glmer(Realised_dose ~ 1 + (1 | Plaque), 
               data = data_O, family = Gamma(link = "logit"))
 anova(realised_dose_max, realised_dose_min)
+
 AIC(realised_dose_max)
 AIC(realised_dose_min)
 
+#dispersion test
 simulateResiduals(realised_dose_max, plot = TRUE)
 
 tab_model(realised_dose_max, realised_dose_min, string.est="IRR", show.aicc=TRUE, digits=2, show.ci=FALSE, show.intercept=FALSE)
@@ -479,14 +507,15 @@ print("Dunn's test results for realised dose:")
 print(dunn_dose_reelle)
 ```
 
+
 ```{r Plot realized dose ~ treatement}
 ggplot(data, aes(x = Trt_categ, y = Realised_dose, fill = Trt_categ)) +
-  geom_boxplot(alpha = 1) +
-  geom_point() +
+   geom_boxplot(alpha = 1) +
+   geom_point() +
   labs(x = "MeHg treatment dose (ul/ml)",
-       y = "Realized dose (ul/ml)") +
-  scale_fill_manual(values=c("darkgreen", "khaki4", "#d0d3a2", "palegreen4", "olivedrab3")) +
+       y = "Realized dose (ug/g)") +
   scale_x_discrete(labels = c("0", "0.76", "3.8", "7.6", "38")) +
+  scale_fill_manual(values=c("darkgreen", "khaki4", "#d0d3a2", "palegreen4", "olivedrab3")) +
   theme(panel.background = element_rect(fill = 'white'),
         panel.grid.major = element_line(colour = "gray90"),
         panel.grid.minor = element_line(colour = "gray90"),
@@ -501,3 +530,36 @@ ggplot(data, aes(x = Trt_categ, y = Realised_dose, fill = Trt_categ)) +
         axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
         axis.text.y = element_text(color = "gray25", size = 10))
 ```
+
+To check for the potential linear distribution, I made a plot with the treatment as a continuous variable and calculated the R2
+
+```{r plot realized dose ~ treatement continuous}
+#creation of the lm model
+model <- lm(Treatment_ul ~ Realised_dose, data = data)
+
+# r square from the lm model 
+r_squared <- summary(model)$r.squared
+
+# graphical representation 
+ggplot(data, aes(x = Treatment_ul, y = Realised_dose)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "#df91a3", size=0.7) +
+  annotate("text", x = 30, y = 0.07, label = paste("R² = ", round(r_squared, 3)), color = "lightpink4", size = 5) +
+  labs(x = "Treatment (ul)", y = "Realised Dose") +
+  theme(panel.background = element_rect(fill = 'white'),
+        panel.grid.major = element_line(colour = "gray90"),
+        panel.grid.minor = element_line(colour = "gray90"),
+        axis.line = element_line(colour = "gray25", size = 1),
+        axis.ticks = element_line(colour = "gray25", size = 1),
+        legend.position = "none", 
+        legend.title = element_text(size = 16),
+        axis.title.x = element_text(size = 13, color = "gray25"),
+        axis.title.y = element_text(size = 13, color = "gray25"),
+        legend.text = element_text(size = 14), 
+        legend.key = element_rect(fill = 'white'),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+        axis.text.y = element_text(color = "gray25", size = 10)) +
+  scale_y_continuous(breaks = seq(0, 0.12, by = 0.025)) +  
+  scale_x_continuous(breaks = seq(0, 40, by = 10))
+```
+
